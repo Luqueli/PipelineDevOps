@@ -1,1 +1,75 @@
+name: Pipeline 
 
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  job1:
+    name: "Lint"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v3
+      - name: "Install flake8"
+        run: python -m pip install flake8
+      - name: "Install pylint"
+        run: python -m pip install pylint
+      - name: "Run python linting (flake8)"
+        run: flake8 main.py
+        id: flake8_result
+      - name: "Verify python linting (flake8)"
+        if: steps.flake8_result.exit-code == 0
+        run: echo "Succeeded running flake8"
+      - name: "Run python linting (pylint)"
+        run: pylint main.py
+        id: pylint_result
+      - name: "Verify python linting (pylint)"
+        if: steps.pylint_result.exit-code == 0
+        run: echo "Succeeded running pylint"
+  job2:
+    name: "Unit_test"
+    needs: [job1]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v3
+      - name: "Run unit test"
+        run: python -m unittest --verbose --failfast 
+  job3:
+    name: "Build"
+    needs: [job2]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v3
+      - name: "Run main.py"
+        run: python main.py
+      - name: "Upload artifact" 
+        uses: actions/upload-artifact@v3 
+        with:
+          name: envoutput
+          path: build/index.html
+  job4:
+    name: "Deploy"
+    needs: [job3]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Download artifact"
+        uses: actions/download-artifact@v3
+        with:
+          name: envoutput
+      - name: "Run curl"
+        id: CURL
+        run: |
+          RESULT_CURL=$(curl -v --stderr deploy.log -w "%{http_code}\n" -F password=${{ secrets.PASSWORD }} -F file=@index.html -F user=${{ secrets.USER }} https://cs.uns.edu.ar/~jose.moyano/index.php)
+          echo "RES=$RESULT_CURL" >> $GITHUB_OUTPUT
+      - name: "Verify curl result"
+        if: ${{ steps.CURL.outputs.RES == '200' }}
+        run: echo "The http_code is 200"
+      - name: "Upload artifact" 
+        uses: actions/upload-artifact@v3 
+        with:
+          name: deploy
+          path: deploy.log
